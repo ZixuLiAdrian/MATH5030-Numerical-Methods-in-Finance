@@ -7,7 +7,7 @@ name = "asian-option-pricer"
 version = "0.1.0"
 description = "Efficient numerical pricing methods for arithmetic Asian options"
 readme = "README.md"
-requires-python = ">=3.10"
+requires-python = ">=3.9"
 dependencies = [
   "numpy>=1.24",
   "scipy>=1.10",
@@ -21,3 +21,6 @@ package-dir = {"" = "src"}
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
