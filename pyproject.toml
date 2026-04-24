@@ -5,16 +5,55 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "asian-option-pricer"
 version = "0.1.0"
-description = "Efficient numerical pricing methods for arithmetic Asian options"
+description = "Efficient numerical pricing methods for arithmetic Asian options under GBM"
 readme = "README.md"
+license = { file = "LICENSE" }
+authors = [
+  { name = "Zixu Li" },
+  { name = "Zhanpeng Jiang" },
+  { name = "Kaifan Yang" },
+  { name = "Terry Zhang" },
+  { name = "Jack Jia" },
+]
 requires-python = ">=3.9"
+keywords = [
+  "asian option",
+  "monte carlo",
+  "quasi-monte carlo",
+  "sobol",
+  "brownian bridge",
+  "control variate",
+  "quantitative finance",
+  "numerical methods",
+]
+classifiers = [
+  "Development Status :: 4 - Beta",
+  "Intended Audience :: Science/Research",
+  "Intended Audience :: Financial and Insurance Industry",
+  "License :: OSI Approved :: MIT License",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.9",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Topic :: Scientific/Engineering :: Mathematics",
+  "Topic :: Office/Business :: Financial",
+]
 dependencies = [
   "numpy>=1.24",
   "scipy>=1.10",
   "pandas>=2.0",
   "matplotlib>=3.7",
-  "pytest>=7.0"
 ]
+
+[project.optional-dependencies]
+test = ["pytest>=7.0"]
+dev  = ["pytest>=7.0", "jupyter>=1.0", "pyfeng>=0.3.2"]
+
+[project.urls]
+Homepage   = "https://github.com/ZixuLiAdrian/MATH-5030-Numercial-Methods-in-Finance"
+Repository = "https://github.com/ZixuLiAdrian/MATH-5030-Numercial-Methods-in-Finance"
+Issues     = "https://github.com/ZixuLiAdrian/MATH-5030-Numercial-Methods-in-Finance/issues"
 
 [tool.setuptools]
 package-dir = {"" = "src"}
@@ -24,3 +63,4 @@ where = ["src"]
 
 [tool.pytest.ini_options]
 pythonpath = ["src"]
+testpaths  = ["tests"]

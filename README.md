@@ -9,11 +9,13 @@ robustness.
 
 The arithmetic average of lognormal prices does not admit a closed-form
 distribution, so the exact price must be obtained numerically. We implement
-seven estimators from the literature and measure how tightly each one prices
-the option per unit of CPU time; we then show that two classical
-variance-reduction ideas — **geometric-Asian control variate** and
-**Brownian-bridge Sobol QMC** — improve root-mean-square error by **one to
-two orders of magnitude** over plain Monte Carlo on this problem.
+**two analytic benchmarks** (Kemna–Vorst closed form, Levy approximation) and
+**six MC/QMC estimators**, tested in seven configurations (Sobol is benchmarked
+under both incremental and Brownian-bridge path construction). We measure how
+tightly each configuration prices the option per unit of CPU time and show that
+two classical variance-reduction ideas — **geometric-Asian control variate** and
+**Brownian-bridge Sobol QMC** — improve root-mean-square error by **one to two
+orders of magnitude** over plain Monte Carlo.
 
 ---
 
@@ -81,8 +83,9 @@ mean for variance reduction.
 
 ## 3. Methods implemented
 
-All estimators take a common `AsianOptionParams` object and an `n_paths`
-budget, and return `{price, std_err, runtime_s, n_paths, ...}`.
+The two analytic methods return a scalar price directly. The six MC/QMC
+estimators take a common `AsianOptionParams` object and an `n_paths` budget,
+and return `{price, std_err, runtime_s, n_paths, ...}`.
 
 | Module | Function | What it does |
 | --- | --- | --- |
@@ -170,6 +173,29 @@ Representative errors at `S0 = 100`, `K = 100`, `T = 1`, `N = 50`:
 Sobol-bridge and RQMC-bridge are all within a handful of basis points of
 the reference across every scenario, regardless of moneyness or volatility.
 
+### 4.3 Continuous-limit cross-validation (PyFENG BsmAsianJsu)
+
+As $N \to \infty$ the discrete monitoring grid becomes dense and the discrete
+Asian price must converge to the continuous arithmetic Asian price. We
+cross-validate against PyFENG's `BsmAsianJsu` (Johnson's SU approximation,
+Choi & Kwok 2022) as an independent continuous benchmark:
+
+| N | Our discrete price | PyFENG JSU | Gap |
+| ---: | ---: | ---: | ---: |
+|   52 | 5.8541 | 5.7630 | +0.0912 |
+|  250 | 5.7824 | 5.7630 | +0.0194 |
+|  500 | 5.7719 | 5.7630 | +0.0090 |
+| 1000 | 5.7679 | 5.7630 | +0.0049 |
+
+*`S0 = K = 100`, `r = 5%`, `sigma = 20%`, `T = 1 year`. Discrete prices from
+RQMC bridge (131k paths, 16 scrambles). Gap shrinks monotonically at the
+expected $O(1/N)$ rate, confirming internal consistency between the discrete
+and continuous formulations.*
+
+Run `python experiments/run_validation.py` to reproduce
+`results/tables/pyfeng_convergence.csv`. PyFENG can be installed with
+`pip install pyfeng`.
+
 ---
 
 ## 5. Robustness
@@ -181,19 +207,20 @@ the reference across every scenario, regardless of moneyness or volatility.
 200 scenarios with `sigma ∈ [0.05, 0.80]`, `T ∈ [0.25, 3.0]`, moneyness
 `K/S0 ∈ [0.7, 1.3]`, `r ∈ [0.0, 0.10]`, `N ∈ {12, 26, 52, 100, 250}`:
 
-| Method | NaNs | Out-of-bounds | Mean runtime | Mean SE |
-| --- | ---: | ---: | ---: | ---: |
-| Standard MC | 0 | 0 | 21 ms | 0.142 |
-| Antithetic | 0 | 0 | 17 ms | 0.113 |
-| Control variate | 0 | 0 | 27 ms | 0.017 |
-| Antithetic + CV | 0 | 0 | 22 ms | 0.017 |
-| Sobol bridge | 0 | 0 | 49 ms | 0.142 *(proxy SE)* |
-| RQMC bridge | 0 | 0 | 59 ms | **0.007** |
+| Method | NaNs | Out-of-bounds | Mean SE |
+| --- | ---: | ---: | ---: |
+| Standard MC | 0 | ≤ 1 | 0.142 |
+| Antithetic | 0 | ≤ 1 | 0.113 |
+| Control variate | 0 | ≤ 1 | 0.017 |
+| Antithetic + CV | 0 | ≤ 1 | 0.017 |
+| Sobol bridge | 0 | ≤ 1 | 0.142 *(proxy SE)* |
+| RQMC bridge | 0 | ≤ 1 | **0.007** |
 
-Zero NaNs, zero out-of-bounds prices, zero crashes. The RQMC bridge SE is
-honest (cross-scramble); the single-run Sobol "SE" is the classical MC
-formula applied to QMC samples, which is why it looks similar to plain MC
-despite a much tighter empirical RMSE.
+Zero NaNs, zero crashes. The rare out-of-bounds count (≤ 1 per method across
+200 scenarios) reflects Monte Carlo noise on a tight geometric-Asian lower
+bound — not a pricing error. The RQMC bridge SE is honest (cross-scramble);
+the single-run Sobol "SE" is the classical MC formula applied to QMC samples,
+which is why it looks similar to plain MC despite a much tighter empirical RMSE.
 
 ### 5.2 Monotonicity (`robustness_monotonicity.csv`)
 
@@ -210,7 +237,9 @@ in σ** — no violations — which matches arbitrage-free theory.
   reflecting Jensen's inequality between the arithmetic and geometric
   averages.
 * Deep OTM (`K ∈ {200, 400}`): every estimator returns exactly `0.0`.
-* Dense monitoring (`N = 500`): all estimators agree to within 4 bp.
+* Dense monitoring (`N = 500`): variance-reduced estimators (CV, A+CV,
+  Sobol bridge, RQMC) agree with each other to within 2 bp. Plain MC and
+  antithetic are noisier at the same path budget, as expected.
 
 ---
 
@@ -238,21 +267,20 @@ Key take-aways:
 ## 7. Installation & usage
 
 ```bash
-git clone <repo-url>
-cd asian_option_project_scaffold
-python3 -m pip install -r requirements.txt
-python3 -m pip install -e .   # editable install of the package
+git clone https://github.com/ZixuLiAdrian/MATH-5030-Numercial-Methods-in-Finance
+cd MATH-5030-Numercial-Methods-in-Finance
+pip install -e ".[test]"
 
 # Quick sanity check
-python3 experiments/run_benchmarks.py
+python experiments/run_benchmarks.py
 
 # Full experiment pipeline (~2 minutes total on a laptop)
-python3 experiments/run_validation.py
-python3 experiments/run_robustness.py
-python3 experiments/run_efficiency.py
+python experiments/run_validation.py
+python experiments/run_robustness.py
+python experiments/run_efficiency.py
 
 # Test suite
-PYTHONPATH=src python3 -m pytest tests/ -v
+pytest tests/ -v
 ```
 
 Minimal usage example:
@@ -279,7 +307,7 @@ print(rqmc_sobol_price(params, n_paths=131_072, n_replications=16,
 ## 8. Repository layout
 
 ```
-asian_option_project_scaffold/
+MATH-5030-Numercial-Methods-in-Finance/
 ├─ src/asian_option_pricer/          # core package
 │  ├─ analytic.py                    # Kemna-Vorst + Levy (fixed discrete formula)
 │  ├─ control_variate.py             # CV and antithetic+CV estimators
@@ -298,7 +326,7 @@ asian_option_project_scaffold/
 │  ├─ tables/                        # CSVs produced by the experiments
 │  └─ figures/                       # PNGs produced by the experiments
 ├─ pyproject.toml
-├─ requirements.txt
+├─ LICENSE
 └─ README.md                         # this report
 ```
 
@@ -341,6 +369,9 @@ asian_option_project_scaffold/
    functions.* Annals of Statistics, 25(4), 1541–1562.
 6. Glasserman, P. (2004). *Monte Carlo Methods in Financial Engineering.*
    Springer. Chapters 3 (path simulation) and 5 (QMC).
+7. Choi, J., & Kwok, Y. K. (2022). *Moments of the continuous arithmetic
+   Asian option under GBM.* SIAM Journal on Financial Mathematics.
+   (Implemented as `BsmAsianJsu` in [PyFENG](https://github.com/PyFE/PyFENG).)
 
 ---
 
