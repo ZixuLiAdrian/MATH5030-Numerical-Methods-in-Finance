@@ -22,13 +22,11 @@ pretty-printed to stdout for quick inspection.
 from __future__ import annotations
 
 import time
-from dataclasses import asdict
 
 import numpy as np
 import pandas as pd
 
 from _common import (
-    FIGURES_DIR,
     TABLES_DIR,
     AsianOptionParams,
     high_precision_reference,
@@ -161,6 +159,40 @@ def validate_arithmetic() -> pd.DataFrame:
     return pd.DataFrame(rows)
 
 
+def validate_pyfeng_convergence() -> pd.DataFrame:
+    """Discrete arithmetic Asian converges to the continuous limit as N → ∞.
+
+    Uses PyFENG's BsmAsianJsu (Johnson's SU approximation for the continuous
+    arithmetic Asian) as an independent reference. Prices are computed with
+    RQMC Brownian-bridge at 131k paths / 16 scrambles; the continuous limit is
+    the same call at N → ∞ under GBM.
+    """
+    try:
+        from pyfeng.asian import BsmAsianJsu
+    except ImportError:
+        print("pyfeng not installed — skipping continuous-limit validation.")
+        return pd.DataFrame()
+
+    model = BsmAsianJsu(sigma=0.20, intr=0.05)
+    continuous_price = float(model.price(strike=100.0, spot=100.0, texp=1.0))
+
+    rows = []
+    for N in [52, 250, 500, 1000]:
+        params = AsianOptionParams(S0=100.0, K=100.0, r=0.05, sigma=0.20, T=1.0, N=N)
+        out = rqmc_sobol_price(
+            params, n_paths=131_072, seed=SEED, n_replications=16,
+            path_method="brownian_bridge",
+        )
+        rows.append({
+            "N": N,
+            "discrete_price": round(out["price"], 6),
+            "std_err": round(out["std_err"], 6),
+            "pyfeng_jsu": round(continuous_price, 6),
+            "gap": round(out["price"] - continuous_price, 6),
+        })
+    return pd.DataFrame(rows)
+
+
 def _pretty_geometric(df: pd.DataFrame) -> pd.DataFrame:
     return df[["sigma", "K", "closed_form", "mc_price", "mc_std_err", "abs_error", "z_score"]]
 
@@ -205,9 +237,19 @@ def main() -> None:
     )
     print(pivot_se.to_string(float_format=lambda x: f"{x: .5f}"))
 
+    print()
+    print("=" * 78)
+    print("CONTINUOUS-LIMIT VALIDATION (discrete → BsmAsianJsu as N → ∞)")
+    print("=" * 78)
+    pyfeng_df = validate_pyfeng_convergence()
+    if not pyfeng_df.empty:
+        pyfeng_path = TABLES_DIR / "pyfeng_convergence.csv"
+        pyfeng_df.to_csv(pyfeng_path, index=False)
+        print(pyfeng_df.to_string(index=False))
+        print(f"\nTable saved to {pyfeng_path.relative_to(TABLES_DIR.parent.parent)}")
+
     elapsed = time.perf_counter() - t0
-    print(f"\nValidation complete in {elapsed:.1f}s.  Table saved to "
-          f"{arith_path.relative_to(TABLES_DIR.parent.parent)}")
+    print(f"\nValidation complete in {elapsed:.1f}s.")
 
 
 if __name__ == "__main__":
