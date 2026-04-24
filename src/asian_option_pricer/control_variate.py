@@ -39,16 +39,28 @@ def _discounted_payoff_pair(
     return x, y
 
 
-def _optimal_beta(x: np.ndarray, y: np.ndarray) -> float:
-    """Sample estimate of the variance-minimising CV coefficient.
+def _optimal_beta(x: np.ndarray, y: np.ndarray) -> tuple[float, float]:
+    """Sample estimates of the CV coefficient and variance reduction factor.
 
-    ``beta = Cov(X, Y) / Var(Y)``. Returns ``0`` when ``Var(Y)`` is exactly
-    zero (e.g. deterministic payoffs at zero volatility).
+    Returns ``(beta, var_reduction)`` where
+    ``beta = Cov(X,Y) / Var(Y)`` and
+    ``var_reduction = Var(X) / Var(X - beta*(Y - E[Y]))``.
+    Both are computed from a single pass using dot products.
+    Returns ``(0.0, 1.0)`` when ``Var(Y) == 0``.
     """
-    var_y = float(np.var(y, ddof=1))
+    n = len(y)
+    x_c = x - x.mean()
+    y_c = y - y.mean()
+    var_y = float(np.dot(y_c, y_c) / (n - 1))
     if var_y <= 0.0:
-        return 0.0
-    return float(np.cov(x, y, ddof=1)[0, 1] / var_y)
+        return 0.0, 1.0
+    cov_xy = float(np.dot(x_c, y_c) / (n - 1))
+    beta = cov_xy / var_y
+    var_x = float(np.dot(x_c, x_c) / (n - 1))
+    # Var(X - beta*Y) = Var(X) - 2*beta*Cov(X,Y) + beta^2*Var(Y)
+    var_cv = var_x - 2 * beta * cov_xy + beta ** 2 * var_y
+    var_reduction = var_x / var_cv if var_cv > 0.0 else float("inf")
+    return float(beta), float(var_reduction)
 
 
 def control_variate_price(
@@ -79,7 +91,7 @@ def control_variate_price(
     paths = build_paths(params, z, method=path_method)
     x, y = _discounted_payoff_pair(params, paths)
     mu_y = geometric_asian_call_price(params)
-    beta = _optimal_beta(x, y)
+    beta, var_reduction = _optimal_beta(x, y)
     cv_samples = x - beta * (y - mu_y)
     elapsed = time.perf_counter() - t0
     return {
@@ -88,6 +100,7 @@ def control_variate_price(
         "runtime_s": elapsed,
         "n_paths": n_paths,
         "beta": beta,
+        "var_reduction": var_reduction,
     }
 
 
@@ -127,7 +140,7 @@ def antithetic_cv_price(
     y_pair = 0.5 * (y_pos + y_neg)
 
     mu_y = geometric_asian_call_price(params)
-    beta = _optimal_beta(x_pair, y_pair)
+    beta, var_reduction = _optimal_beta(x_pair, y_pair)
     cv_samples = x_pair - beta * (y_pair - mu_y)
     elapsed = time.perf_counter() - t0
     return {
@@ -136,4 +149,5 @@ def antithetic_cv_price(
         "runtime_s": elapsed,
         "n_paths": 2 * half,
         "beta": beta,
+        "var_reduction": var_reduction,
     }

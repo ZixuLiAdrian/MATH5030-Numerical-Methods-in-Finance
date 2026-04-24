@@ -10,22 +10,6 @@ from .paths import PathMethod, build_paths, payoff_from_paths
 from .utils import discount_factor
 
 
-# ---------------------------------------------------------------------------
-# Legacy helpers kept for backward compatibility with earlier imports.
-# ---------------------------------------------------------------------------
-def _paths_from_z(params: AsianOptionParams, z: np.ndarray) -> np.ndarray:
-    """Deprecated alias preserved for older callers/tests."""
-    return build_paths(params, z, method="incremental")
-
-
-def _payoff_from_paths(paths: np.ndarray, K: float, option_type: str) -> np.ndarray:
-    """Deprecated alias preserved for older callers/tests."""
-    return payoff_from_paths(paths, K, option_type)
-
-
-# ---------------------------------------------------------------------------
-# Estimators.
-# ---------------------------------------------------------------------------
 def standard_mc_price(
     params: AsianOptionParams,
     n_paths: int,
