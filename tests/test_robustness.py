@@ -7,11 +7,13 @@ import pytest
 from asian_option_pricer import (
     AsianOptionParams,
     antithetic_cv_price,
+    antithetic_mc_price,
     control_variate_price,
     rqmc_sobol_price,
     sobol_qmc_price,
     standard_mc_price,
 )
+from asian_option_pricer.utils import monitoring_times
 
 
 def test_invalid_sigma_raises():
@@ -87,3 +89,23 @@ def test_price_is_monotone_in_volatility(estimator):
         prices.append(estimator(params, 8192, 0)["price"])
     diffs = np.diff(prices)
     assert diffs.min() > -1e-3
+
+
+def test_put_call_parity():
+    """Arithmetic Asian put-call parity: C - P = e^{-rT}(E[A] - K).
+
+    The right-hand side is exact: E[A] = (1/N) sum_i S0 * exp(r * t_i).
+    Verified using antithetic MC for both call and put at 500k paths.
+    """
+    params = AsianOptionParams(S0=100.0, K=100.0, r=0.05, sigma=0.2, T=1.0, N=52)
+    params_put = AsianOptionParams(S0=100.0, K=100.0, r=0.05, sigma=0.2, T=1.0, N=52,
+                                   option_type="put")
+
+    call = antithetic_mc_price(params,     n_paths=500_000, seed=0)["price"]
+    put  = antithetic_mc_price(params_put, n_paths=500_000, seed=0)["price"]
+
+    t = monitoring_times(params)
+    expected_avg = float(np.mean(params.S0 * np.exp(params.r * t)))
+    parity_rhs = np.exp(-params.r * params.T) * (expected_avg - params.K)
+
+    assert abs((call - put) - parity_rhs) < 0.01
