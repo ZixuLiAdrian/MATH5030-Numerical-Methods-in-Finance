@@ -9,11 +9,12 @@ description = "Efficient numerical pricing methods for arithmetic Asian options 
 readme = "README.md"
 license = { file = "LICENSE" }
 authors = [
-  { name = "Zixu Li" },
-  { name = "Zhanpeng Jiang" },
-  { name = "Kaifan Yang" },
-  { name = "Terry Zhang" },
+  { name = "Chan-Peng Chen" },
   { name = "Jack Jia" },
+  { name = "Zixu Li" },
+  { name = "Benjamin Tu" },
+  { name = "Tianrui Wang" },
+  { name = "Kaifan Ye" },
 ]
 requires-python = ">=3.9"
 keywords = [
