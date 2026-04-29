@@ -11,7 +11,7 @@
 Pricing an arithmetic Asian option requires simulation because the average of lognormal prices has no closed-form distribution. This package implements two analytic benchmarks and six Monte Carlo / Quasi-Monte Carlo estimators, and shows that combining a **geometric-Asian control variate** with **Brownian-bridge Sobol QMC** reduces pricing error by up to **82×** versus plain Monte Carlo at the same computational cost.
 
 ---
-## Innovation
+## Innovations
 
 While the core methods are classical, several aspects of this project go beyond textbook reproduction:
 
