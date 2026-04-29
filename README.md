@@ -11,6 +11,14 @@
 Pricing an arithmetic Asian option requires simulation because the average of lognormal prices has no closed-form distribution. This package implements two analytic benchmarks and six Monte Carlo / Quasi-Monte Carlo estimators, and shows that combining a **geometric-Asian control variate** with **Brownian-bridge Sobol QMC** reduces pricing error by up to **82×** versus plain Monte Carlo at the same computational cost.
 
 ---
+## Innovation
+
+While the core methods are classical, several aspects of this project go beyond textbook reproduction:
+
+- **Continuous-limit cross-validation** — we independently verify that our discrete prices converge to the continuous arithmetic Asian price at the expected $O(1/N)$ rate, using PyFENG's `BsmAsianJsu` as an external benchmark. This is not a standard validation step.
+- **Empirical variance reduction measurement** — the control variate estimators report a `var_reduction` key computed from the sample, making the speedup measurable rather than just claimed.
+- **Combined antithetic + CV estimator** — `antithetic_cv_price` stacks antithetic sampling and the geometric control variate together, which standard references treat separately.
+- **RMSE vs. CPU time efficiency study** — we measure root-mean-square error across 12 independent replications at five path budgets and plot against both paths and wall-clock time, giving a fairer comparison than RMSE vs. paths alone.
 
 ## Installation
 
