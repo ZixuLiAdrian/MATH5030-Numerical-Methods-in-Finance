@@ -143,11 +143,7 @@ The bridge construction concentrates path variance on the best-equidistributed S
 Under the risk-neutral measure the underlying follows geometric Brownian motion
 
 $$
-\frac{dS_t}{S_t}
-=
-r\,dt + \sigma\,dW_t,
-\qquad
-S_0 \text{ given}.
+\frac{dS_t}{S_t} = r\,dt + \sigma\,dW_t,\qquad S_0 \text{ given}
 $$
 
 For a general averaging window $[T_1,T_2]$, the monitoring dates are
