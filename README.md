@@ -140,26 +140,24 @@ The bridge construction concentrates path variance on the best-equidistributed S
 
 ## Mathematical setup
 
-Under the risk-neutral measure the underlying follows geometric Brownian motion
+Under the risk-neutral measure, the underlying asset follows geometric Brownian motion:
 
 $$
-\frac{dS_t}{S_t}
-=
-r\,dt + \sigma\,dW_t,
+\frac{dS_t}{S_t} = r\,dt + \sigma\,dW_t,
 \qquad
 S_0 \text{ given}.
 $$
 
-For a general averaging window $[T_1,T_2]$, the monitoring dates are
+For a general averaging window $[T_1, T_2]$, the monitoring dates are defined by
 
 $$
 t_i
 =
 T_1
 +
-i\frac{T_2-T_1}{N},
+i \frac{T_2 - T_1}{N},
 \qquad
-i=1,\dots,N.
+i = 1, \dots, N.
 $$
 
 The arithmetic average is
@@ -168,7 +166,7 @@ $$
 A_N
 =
 \frac{1}{N}
-\sum_{i=1}^N S(t_i).
+\sum_{i=1}^{N} S(t_i).
 $$
 
 The Asian call payoff is
@@ -177,7 +175,7 @@ $$
 (A_N - K)^+.
 $$
 
-The arbitrage-free price is
+The arbitrage-free price is therefore
 
 $$
 C
@@ -185,11 +183,11 @@ C
 e^{-rT}
 \mathbb{E}
 \left[
-(A_N-K)^+
+(A_N - K)^+
 \right].
 $$
 
-Because the arithmetic average is a sum of correlated lognormal variables, no elementary closed form exists.
+Because the arithmetic average is a sum of correlated lognormal random variables, no elementary closed-form solution exists.
 
 The auxiliary geometric average
 
@@ -197,11 +195,11 @@ $$
 G_N
 =
 \left(
-\prod_{i=1}^N S(t_i)
+\prod_{i=1}^{N} S(t_i)
 \right)^{1/N}
 $$
 
-remains lognormal even under generalized monitoring schedules, allowing an exact Kemna–Vorst-style closed form.
+remains lognormal even under generalized monitoring schedules, allowing an exact Kemna–Vorst-style closed-form solution.
 
 The original textbook setting corresponds to
 
@@ -212,7 +210,6 @@ T_2 = T.
 $$
 
 Backward compatibility with that setting is fully preserved.
-
 ---
 
 ## Validation
