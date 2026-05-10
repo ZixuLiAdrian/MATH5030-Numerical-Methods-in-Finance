@@ -39,12 +39,17 @@ def brownian_bridge_matrix_from_times(
     produces Brownian motion evaluated at the specified times.
     """
 
-    times = np.asarray(times_tuple, dtype=float)
+    times = np.asarray(
+        times_tuple,
+        dtype=float,
+    )
 
     N = len(times)
 
     if N <= 0:
-        raise ValueError("times must be non-empty.")
+        raise ValueError(
+            "times must be non-empty."
+        )
 
     if np.any(times <= 0):
         raise ValueError(
@@ -57,14 +62,19 @@ def brownian_bridge_matrix_from_times(
         )
 
     # prepend t=0
-    t_ext = np.concatenate(([0.0], times))
+    t_ext = np.concatenate(
+        ([0.0], times)
+    )
 
     B = np.zeros((N, N))
 
     # terminal point
-    B[N - 1, 0] = np.sqrt(times[-1])
+    B[N - 1, 0] = np.sqrt(
+        times[-1]
+    )
 
     queue: deque[tuple[int, int]] = deque()
+
     queue.append((0, N))
 
     z_idx = 1
@@ -82,8 +92,15 @@ def brownian_bridge_matrix_from_times(
         t_m = t_ext[m]
         t_r = t_ext[r]
 
-        coef_l = (t_r - t_m) / (t_r - t_l)
-        coef_r = (t_m - t_l) / (t_r - t_l)
+        coef_l = (
+            (t_r - t_m)
+            / (t_r - t_l)
+        )
+
+        coef_r = (
+            (t_m - t_l)
+            / (t_r - t_l)
+        )
 
         std = np.sqrt(
             (t_m - t_l)
@@ -114,20 +131,25 @@ def brownian_bridge_matrix_from_times(
 @lru_cache(maxsize=32)
 def brownian_bridge_matrix(
     N: int,
-    T: float
+    T: float,
 ) -> np.ndarray:
     """
     Backward-compatible equally spaced bridge matrix.
 
     Equivalent to monitoring times:
+
         T/N, 2T/N, ..., T
     """
 
     if N <= 0:
-        raise ValueError("N must be positive.")
+        raise ValueError(
+            "N must be positive."
+        )
 
     if T <= 0:
-        raise ValueError("T must be positive.")
+        raise ValueError(
+            "T must be positive."
+        )
 
     times = tuple(
         (
@@ -136,7 +158,9 @@ def brownian_bridge_matrix(
         ).tolist()
     )
 
-    return brownian_bridge_matrix_from_times(times)
+    return brownian_bridge_matrix_from_times(
+        times
+    )
 
 
 def build_paths(
@@ -150,9 +174,16 @@ def build_paths(
     Supports arbitrary monitoring windows [T1, T2].
     """
 
-    if z.ndim != 2 or z.shape[1] != params.N:
+    params.validate()
+
+    if (
+        z.ndim != 2
+        or z.shape[1] != params.N
+    ):
         raise ValueError(
-            f"z must have shape (n_paths, {params.N}); got {z.shape}."
+            f"z must have shape "
+            f"(n_paths, {params.N}); "
+            f"got {z.shape}."
         )
 
     # monitoring dates
@@ -165,15 +196,15 @@ def build_paths(
 
     if method == "incremental":
 
-        # IMPORTANT:
-        # Brownian increments must match actual time spacing
+        # Brownian increments must match
+        # actual monitoring schedule
         dt = np.diff(
             np.concatenate(([0.0], t))
         )
 
         W = np.cumsum(
             np.sqrt(dt) * z,
-            axis=1
+            axis=1,
         )
 
     elif method == "brownian_bridge":
@@ -182,18 +213,20 @@ def build_paths(
             tuple(float(x) for x in t)
         )
 
-        # each row = Brownian path
+        # each row corresponds to one path
         W = z @ B.T
 
     else:
         raise ValueError(
-            f"Unknown path construction '{method}'. "
-            "Use 'incremental' or 'brownian_bridge'."
+            f"Unknown path construction "
+            f"'{method}'. "
+            "Use 'incremental' or "
+            "'brownian_bridge'."
         )
 
     log_paths = (
         np.log(params.S0)
-        + drift_term
+        + drift_term[None, :]
         + params.sigma * W
     )
 
@@ -203,44 +236,68 @@ def build_paths(
 def payoff_from_paths(
     paths: np.ndarray,
     K: float,
-    option_type: str
+    option_type: str,
 ) -> np.ndarray:
     """
     Arithmetic-average Asian payoff.
     """
 
+    if paths.ndim != 2:
+        raise ValueError(
+            "paths must be 2-dimensional."
+        )
+
     avg = paths.mean(axis=1)
 
     if option_type == "call":
-        return np.maximum(avg - K, 0.0)
+        return np.maximum(
+            avg - K,
+            0.0,
+        )
 
     if option_type == "put":
-        return np.maximum(K - avg, 0.0)
+        return np.maximum(
+            K - avg,
+            0.0,
+        )
 
     raise ValueError(
-        f"Unknown option_type '{option_type}'."
+        f"Unknown option_type "
+        f"'{option_type}'."
     )
 
 
 def geometric_payoff_from_paths(
     paths: np.ndarray,
     K: float,
-    option_type: str
+    option_type: str,
 ) -> np.ndarray:
     """
     Geometric-average Asian payoff.
     """
+
+    if paths.ndim != 2:
+        raise ValueError(
+            "paths must be 2-dimensional."
+        )
 
     geom = np.exp(
         np.log(paths).mean(axis=1)
     )
 
     if option_type == "call":
-        return np.maximum(geom - K, 0.0)
+        return np.maximum(
+            geom - K,
+            0.0,
+        )
 
     if option_type == "put":
-        return np.maximum(K - geom, 0.0)
+        return np.maximum(
+            K - geom,
+            0.0,
+        )
 
     raise ValueError(
-        f"Unknown option_type '{option_type}'."
+        f"Unknown option_type "
+        f"'{option_type}'."
     )
