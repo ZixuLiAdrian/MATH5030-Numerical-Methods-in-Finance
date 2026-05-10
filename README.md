@@ -149,22 +149,13 @@ $$
 For a general averaging window $[T_1,T_2]$, the monitoring dates are
 
 $$
-t_i
-=
-T_1
-+
-i\frac{T_2-T_1}{N},
-\qquad
-i=1,\dots,N.
+t_i = T_1 + i\frac{T_2-T_1}{N}, \qquad i=1,\dots,N.
 $$
 
 The arithmetic average is
 
 $$
-A_N
-=
-\frac{1}{N}
-\sum_{i=1}^N S(t_i).
+A_N = \frac{1}{N} \sum_{i=1}^N S(t_i).
 $$
 
 The Asian call payoff is
@@ -176,13 +167,7 @@ $$
 The arbitrage-free price is
 
 $$
-C
-=
-e^{-rT}
-\mathbb{E}
-\left[
-(A_N-K)^+
-\right].
+C = e^{-rT} \mathbb{E} \left[(A_N-K)^+\right].
 $$
 
 Because the arithmetic average is a sum of correlated lognormal variables, no elementary closed form exists.
@@ -190,11 +175,7 @@ Because the arithmetic average is a sum of correlated lognormal variables, no el
 The auxiliary geometric average
 
 $$
-G_N
-=
-\left(
-\prod_{i=1}^N S(t_i)
-\right)^{1/N}
+G_N = \left(\prod_{i=1}^N S(t_i)\right)^{1/N}
 $$
 
 remains lognormal even under generalized monitoring schedules, allowing an exact Kemna–Vorst-style closed form. We use this result both as an analytic benchmark and as the control mean in our variance reduction estimators.
@@ -202,9 +183,7 @@ remains lognormal even under generalized monitoring schedules, allowing an exact
 The original textbook setting corresponds to
 
 $$
-T_1 = 0,
-\qquad
-T_2 = T.
+T_1 = 0, \qquad T_2 = T.
 $$
 
 Backward compatibility with that setting is fully preserved.
