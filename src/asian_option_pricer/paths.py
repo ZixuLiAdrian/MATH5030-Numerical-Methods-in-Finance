@@ -1,22 +1,16 @@
-"""Path construction utilities for GBM under equally-spaced monitoring.
+"""
+Path construction utilities for GBM under arbitrary monitoring windows.
 
 Two constructions from N iid standard normals to a discrete Brownian path are
 supported:
 
-* ``incremental`` (a.k.a. forward / random-walk construction) builds each
-  Brownian increment independently. This is the default for plain Monte Carlo
-  because all coordinates contribute equal variance.
+* ``incremental`` (a.k.a. forward / random-walk construction)
 
-* ``brownian_bridge`` places the terminal value on the first coordinate and
-  then fills in the remaining points by recursive bisection. Early coordinates
-  therefore capture the coarse shape of the path and carry most of the
-  variance. With low-discrepancy sequences (Sobol), whose first coordinates
-  are the best distributed, this can give dramatic variance reduction on
-  path-dependent payoffs (Moro 1995, Caflisch-Morokoff-Owen 1997).
+* ``brownian_bridge``
 
-The two helpers return log-price paths of shape ``(n_paths, N)`` so callers
-can share downstream payoff code regardless of the construction.
+This version supports averaging windows [T1, T2] instead of only [0, T].
 """
+
 from __future__ import annotations
 
 from collections import deque
@@ -32,60 +26,117 @@ PathMethod = str  # "incremental" | "brownian_bridge"
 
 
 @lru_cache(maxsize=32)
-def brownian_bridge_matrix(N: int, T: float) -> np.ndarray:
-    """Return a matrix ``B`` of shape ``(N, N)`` with ``W = B @ z`` where
-    ``z`` is an iid standard-normal vector and ``W`` is the Brownian motion at
-    the ``N`` equally-spaced times ``T/N, 2T/N, ..., T`` constructed in
-    bridge order.
-
-    The construction follows Glasserman (2004), Monte Carlo Methods in
-    Financial Engineering, section 3.1. Coordinate ``z[0]`` sets the terminal
-    point; subsequent coordinates fill mid-points of already-determined
-    intervals by breadth-first bisection, so the earliest ``z``-coordinates
-    control the coarsest scales of the path.
+def brownian_bridge_matrix_from_times(
+    times_tuple: tuple[float, ...]
+) -> np.ndarray:
     """
-    if N <= 0:
-        raise ValueError("N must be positive.")
-    if T <= 0:
-        raise ValueError("T must be positive.")
+    Return Brownian bridge matrix for arbitrary monitoring times.
 
-    dt = T / N
-    # t_ext[0] = 0, t_ext[k] = k * dt for k = 1..N.
-    t_ext = np.arange(N + 1) * dt
+    If z ~ N(0, I), then
+
+        W = B @ z
+
+    produces Brownian motion evaluated at the specified times.
+    """
+
+    times = np.asarray(times_tuple, dtype=float)
+
+    N = len(times)
+
+    if N <= 0:
+        raise ValueError("times must be non-empty.")
+
+    if np.any(times <= 0):
+        raise ValueError(
+            "monitoring times must be positive."
+        )
+
+    if np.any(np.diff(times) <= 0):
+        raise ValueError(
+            "monitoring times must be strictly increasing."
+        )
+
+    # prepend t=0
+    t_ext = np.concatenate(([0.0], times))
 
     B = np.zeros((N, N))
-    # Terminal point: W(T) = sqrt(T) * z[0].
-    B[N - 1, 0] = np.sqrt(T)
 
-    # Breadth-first bisection on index intervals (l, r) in t_ext.
+    # terminal point
+    B[N - 1, 0] = np.sqrt(times[-1])
+
     queue: deque[tuple[int, int]] = deque()
     queue.append((0, N))
+
     z_idx = 1
+
     while queue and z_idx < N:
+
         l, r = queue.popleft()
+
         m = (l + r) // 2
+
         if m == l or m == r:
             continue
-        t_l, t_m, t_r = t_ext[l], t_ext[m], t_ext[r]
-        # Bridge parameters.
+
+        t_l = t_ext[l]
+        t_m = t_ext[m]
+        t_r = t_ext[r]
+
         coef_l = (t_r - t_m) / (t_r - t_l)
         coef_r = (t_m - t_l) / (t_r - t_l)
-        std = np.sqrt((t_m - t_l) * (t_r - t_m) / (t_r - t_l))
 
-        # Row i in B corresponds to W at t_ext[i+1].
+        std = np.sqrt(
+            (t_m - t_l)
+            * (t_r - t_m)
+            / (t_r - t_l)
+        )
+
         row = np.zeros(N)
+
         if l > 0:
             row += coef_l * B[l - 1, :]
+
         if r > 0:
             row += coef_r * B[r - 1, :]
+
         row[z_idx] = std
+
         B[m - 1, :] = row
 
         z_idx += 1
+
         queue.append((l, m))
         queue.append((m, r))
 
     return B
+
+
+@lru_cache(maxsize=32)
+def brownian_bridge_matrix(
+    N: int,
+    T: float
+) -> np.ndarray:
+    """
+    Backward-compatible equally spaced bridge matrix.
+
+    Equivalent to monitoring times:
+        T/N, 2T/N, ..., T
+    """
+
+    if N <= 0:
+        raise ValueError("N must be positive.")
+
+    if T <= 0:
+        raise ValueError("T must be positive.")
+
+    times = tuple(
+        (
+            np.arange(1, N + 1)
+            * (T / N)
+        ).tolist()
+    )
+
+    return brownian_bridge_matrix_from_times(times)
 
 
 def build_paths(
@@ -93,61 +144,103 @@ def build_paths(
     z: np.ndarray,
     method: PathMethod = "incremental",
 ) -> np.ndarray:
-    """Turn ``(n_paths, N)`` standard normals into GBM price paths.
-
-    Parameters
-    ----------
-    params
-        Option parameters (provides ``S0``, ``r``, ``sigma``, ``T``, ``N``).
-    z
-        Shape ``(n_paths, N)`` array of iid standard normals.
-    method
-        ``"incremental"`` (default) or ``"brownian_bridge"``.
-
-    Returns
-    -------
-    paths : np.ndarray
-        Shape ``(n_paths, N)`` with ``paths[:, i] = S(t_{i+1})``.
     """
-    if z.ndim != 2 or z.shape[1] != params.N:
-        raise ValueError(f"z must have shape (n_paths, {params.N}); got {z.shape}.")
+    Turn (n_paths, N) standard normals into GBM price paths.
 
-    t = monitoring_times(params)  # shape (N,)
-    drift_term = (params.r - 0.5 * params.sigma ** 2) * t
+    Supports arbitrary monitoring windows [T1, T2].
+    """
+
+    if z.ndim != 2 or z.shape[1] != params.N:
+        raise ValueError(
+            f"z must have shape (n_paths, {params.N}); got {z.shape}."
+        )
+
+    # monitoring dates
+    t = monitoring_times(params)
+
+    drift_term = (
+        params.r
+        - 0.5 * params.sigma ** 2
+    ) * t
 
     if method == "incremental":
-        dt = params.T / params.N
-        # W at monitoring times is sqrt(dt) * cumsum(z).
-        W = np.sqrt(dt) * np.cumsum(z, axis=1)
+
+        # IMPORTANT:
+        # Brownian increments must match actual time spacing
+        dt = np.diff(
+            np.concatenate(([0.0], t))
+        )
+
+        W = np.cumsum(
+            np.sqrt(dt) * z,
+            axis=1
+        )
+
     elif method == "brownian_bridge":
-        B = brownian_bridge_matrix(params.N, params.T)
-        # W = z @ B.T so that each row is W evaluated at the monitoring times.
+
+        B = brownian_bridge_matrix_from_times(
+            tuple(float(x) for x in t)
+        )
+
+        # each row = Brownian path
         W = z @ B.T
+
     else:
         raise ValueError(
             f"Unknown path construction '{method}'. "
             "Use 'incremental' or 'brownian_bridge'."
         )
 
-    log_paths = np.log(params.S0) + drift_term + params.sigma * W
+    log_paths = (
+        np.log(params.S0)
+        + drift_term
+        + params.sigma * W
+    )
+
     return np.exp(log_paths)
 
 
-def payoff_from_paths(paths: np.ndarray, K: float, option_type: str) -> np.ndarray:
-    """Arithmetic-average Asian payoff for each path."""
+def payoff_from_paths(
+    paths: np.ndarray,
+    K: float,
+    option_type: str
+) -> np.ndarray:
+    """
+    Arithmetic-average Asian payoff.
+    """
+
     avg = paths.mean(axis=1)
+
     if option_type == "call":
         return np.maximum(avg - K, 0.0)
+
     if option_type == "put":
         return np.maximum(K - avg, 0.0)
-    raise ValueError(f"Unknown option_type '{option_type}'.")
+
+    raise ValueError(
+        f"Unknown option_type '{option_type}'."
+    )
 
 
-def geometric_payoff_from_paths(paths: np.ndarray, K: float, option_type: str) -> np.ndarray:
-    """Geometric-average Asian payoff for each path (used by control variates)."""
-    geom = np.exp(np.log(paths).mean(axis=1))
+def geometric_payoff_from_paths(
+    paths: np.ndarray,
+    K: float,
+    option_type: str
+) -> np.ndarray:
+    """
+    Geometric-average Asian payoff.
+    """
+
+    geom = np.exp(
+        np.log(paths).mean(axis=1)
+    )
+
     if option_type == "call":
         return np.maximum(geom - K, 0.0)
+
     if option_type == "put":
         return np.maximum(K - geom, 0.0)
-    raise ValueError(f"Unknown option_type '{option_type}'.")
+
+    raise ValueError(
+        f"Unknown option_type '{option_type}'."
+    )
