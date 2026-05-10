@@ -14,7 +14,7 @@ from .utils import monitoring_times
 
 
 def _discrete_geometric_log_moments(
-    params: AsianOptionParams
+    params: AsianOptionParams,
 ) -> tuple[float, float]:
     """
     Return mean and variance of log geometric average.
@@ -25,13 +25,17 @@ def _discrete_geometric_log_moments(
 
     log(G) is normal with:
 
-        mean = log(S0)
-               + (r - 0.5 sigma^2) * average(t_i)
+        mean
+            = log(S0)
+              + (r - 0.5 sigma^2)
+                * average(t_i)
 
         variance
             = sigma^2 / N^2
               * sum_i sum_j min(t_i, t_j)
     """
+
+    params.validate()
 
     t = monitoring_times(params)
 
@@ -54,14 +58,17 @@ def _discrete_geometric_log_moments(
         )
     )
 
-    return mean_log_g, var_log_g
+    return (
+        mean_log_g,
+        var_log_g,
+    )
 
 
 def geometric_asian_call_price(
-    params: AsianOptionParams
+    params: AsianOptionParams,
 ) -> float:
     """
-    Kemna-Vorst exact price for discretely monitored
+    Exact Kemna-Vorst price for discretely monitored
     geometric Asian call under arbitrary monitoring dates.
     """
 
@@ -69,28 +76,40 @@ def geometric_asian_call_price(
 
     if params.option_type != "call":
         raise NotImplementedError(
-            "Closed-form geometric benchmark currently implemented for call only."
+            "Closed-form geometric benchmark "
+            "currently implemented for call only."
         )
 
     mean_log_g, var_log_g = (
-        _discrete_geometric_log_moments(params)
+        _discrete_geometric_log_moments(
+            params
+        )
     )
 
-    df = np.exp(-params.r * params.T)
+    df = np.exp(
+        -params.r * params.T
+    )
 
     # E[G]
     forward_g = np.exp(
-        mean_log_g + 0.5 * var_log_g
+        mean_log_g
+        + 0.5 * var_log_g
     )
 
+    # deterministic limit
     if var_log_g == 0.0:
 
         return float(
             df
-            * max(forward_g - params.K, 0.0)
+            * max(
+                forward_g - params.K,
+                0.0,
+            )
         )
 
-    vol_g = np.sqrt(var_log_g)
+    vol_g = np.sqrt(
+        var_log_g
+    )
 
     d1 = (
         mean_log_g
@@ -110,7 +129,7 @@ def geometric_asian_call_price(
 
 
 def levy_approx_call_price(
-    params: AsianOptionParams
+    params: AsianOptionParams,
 ) -> float:
     """
     Levy (1992) lognormal moment-matching approximation
@@ -123,7 +142,8 @@ def levy_approx_call_price(
 
     if params.option_type != "call":
         raise NotImplementedError(
-            "Levy approximation currently implemented for call only."
+            "Levy approximation currently "
+            "implemented for call only."
         )
 
     t = monitoring_times(params)
@@ -151,21 +171,32 @@ def levy_approx_call_price(
             * np.exp(
                 r * (t_i + t_j)
                 + sigma ** 2
-                * np.minimum(t_i, t_j)
+                * np.minimum(
+                    t_i,
+                    t_j,
+                )
             )
         )
     )
 
-    df = np.exp(-r * T)
+    df = np.exp(
+        -r * T
+    )
 
-    # Lognormal moment matching
-    v = np.log(M2 / (M1 ** 2))
+    # lognormal variance
+    v = np.log(
+        M2 / (M1 ** 2)
+    )
 
+    # deterministic limit
     if v <= 0.0:
 
         return float(
             df
-            * max(M1 - K, 0.0)
+            * max(
+                M1 - K,
+                0.0,
+            )
         )
 
     sqrt_v = np.sqrt(v)
