@@ -1,4 +1,5 @@
 """Tests for the Monte Carlo and QMC estimators."""
+
 from __future__ import annotations
 
 import numpy as np
@@ -14,10 +15,37 @@ from asian_option_pricer import (
     standard_mc_price,
 )
 
+from asian_option_pricer.utils import (
+    monitoring_times,
+)
+
 
 @pytest.fixture
 def params() -> AsianOptionParams:
-    return AsianOptionParams(S0=100, K=100, r=0.05, sigma=0.20, T=1.0, N=12)
+
+    return AsianOptionParams(
+        S0=100,
+        K=100,
+        r=0.05,
+        sigma=0.20,
+        T=1.0,
+        N=12,
+    )
+
+
+@pytest.fixture
+def delayed_params() -> AsianOptionParams:
+
+    return AsianOptionParams(
+        S0=100,
+        K=100,
+        r=0.05,
+        sigma=0.20,
+        T=1.0,
+        N=12,
+        T1=0.5,
+        T2=1.0,
+    )
 
 
 ALL_ESTIMATORS = [
@@ -31,78 +59,370 @@ ALL_ESTIMATORS = [
 
 
 @pytest.mark.parametrize("func", ALL_ESTIMATORS)
-def test_estimators_return_expected_keys(params, func):
-    out = func(params, n_paths=1024, seed=1)
+def test_estimators_return_expected_keys(
+    params,
+    func,
+):
+
+    out = func(
+        params,
+        n_paths=1024,
+        seed=1,
+    )
+
     assert "price" in out
     assert "std_err" in out
     assert "runtime_s" in out
     assert "n_paths" in out
+
     assert out["price"] >= 0.0
     assert out["std_err"] >= 0.0
 
 
 @pytest.mark.parametrize("func", ALL_ESTIMATORS)
-def test_estimators_are_deterministic_with_seed(params, func):
-    out1 = func(params, n_paths=2048, seed=42)
-    out2 = func(params, n_paths=2048, seed=42)
+def test_estimators_work_with_delayed_averaging(
+    delayed_params,
+    func,
+):
+
+    out = func(
+        delayed_params,
+        n_paths=2048,
+        seed=123,
+    )
+
+    assert "price" in out
+    assert "std_err" in out
+
+    assert out["price"] >= 0.0
+    assert out["std_err"] >= 0.0
+
+
+@pytest.mark.parametrize("func", ALL_ESTIMATORS)
+def test_estimators_are_deterministic_with_seed(
+    params,
+    func,
+):
+
+    out1 = func(
+        params,
+        n_paths=2048,
+        seed=42,
+    )
+
+    out2 = func(
+        params,
+        n_paths=2048,
+        seed=42,
+    )
+
+    assert out1["price"] == out2["price"]
+
+
+@pytest.mark.parametrize("func", ALL_ESTIMATORS)
+def test_estimators_are_deterministic_with_seed_delayed(
+    delayed_params,
+    func,
+):
+
+    out1 = func(
+        delayed_params,
+        n_paths=2048,
+        seed=42,
+    )
+
+    out2 = func(
+        delayed_params,
+        n_paths=2048,
+        seed=42,
+    )
+
     assert out1["price"] == out2["price"]
 
 
 def test_variance_reduction_ordering(params):
-    """At a moderate budget we expect the SE ordering
-    standard_mc >= antithetic >> control_variate ~ antithetic_cv > rqmc_bridge.
-    This is a statistical claim, but the margins are large enough that the
-    ordering is robust across reasonable seeds at n_paths >= ~20k."""
+    """
+    Standard variance reduction hierarchy.
+    """
+
     n = 32_768
     seed = 12345
-    mc = standard_mc_price(params, n, seed=seed)
-    anti = antithetic_mc_price(params, n, seed=seed)
-    cv = control_variate_price(params, n, seed=seed)
-    acv = antithetic_cv_price(params, n, seed=seed)
-    rqmc = rqmc_sobol_price(params, n, seed=seed, n_replications=8)
+
+    mc = standard_mc_price(
+        params,
+        n,
+        seed=seed,
+    )
+
+    anti = antithetic_mc_price(
+        params,
+        n,
+        seed=seed,
+    )
+
+    cv = control_variate_price(
+        params,
+        n,
+        seed=seed,
+    )
+
+    acv = antithetic_cv_price(
+        params,
+        n,
+        seed=seed,
+    )
+
+    rqmc = rqmc_sobol_price(
+        params,
+        n,
+        seed=seed,
+        n_replications=8,
+    )
 
     assert anti["std_err"] < mc["std_err"]
+
     assert cv["std_err"] < anti["std_err"]
-    # The combined CV+antithetic estimator doesn't always beat CV alone on
-    # this payoff, but its SE should be within a small factor.
+
     assert acv["std_err"] < 2.0 * cv["std_err"]
-    # RQMC should be clearly better than plain MC and at least competitive
-    # with CV. At low dimension (small N) its edge over CV is modest, so we
-    # only demand a meaningful win versus unaugmented MC here.
+
     assert rqmc["std_err"] < 0.1 * mc["std_err"]
+
     assert rqmc["std_err"] < 2.0 * cv["std_err"]
 
 
-def test_rqmc_requires_multiple_replications(params):
+def test_variance_reduction_ordering_delayed():
+
+    params = AsianOptionParams(
+        S0=100,
+        K=100,
+        r=0.05,
+        sigma=0.20,
+        T=1.0,
+        N=24,
+        T1=0.25,
+        T2=1.0,
+    )
+
+    n = 32_768
+    seed = 999
+
+    mc = standard_mc_price(
+        params,
+        n,
+        seed=seed,
+    )
+
+    anti = antithetic_mc_price(
+        params,
+        n,
+        seed=seed,
+    )
+
+    cv = control_variate_price(
+        params,
+        n,
+        seed=seed,
+    )
+
+    rqmc = rqmc_sobol_price(
+        params,
+        n,
+        seed=seed,
+        n_replications=8,
+    )
+
+    assert anti["std_err"] < mc["std_err"]
+
+    assert cv["std_err"] < anti["std_err"]
+
+    assert rqmc["std_err"] < mc["std_err"]
+
+
+def test_zero_volatility_delayed_averaging():
+
+    params = AsianOptionParams(
+        S0=100,
+        K=100,
+        r=0.05,
+        sigma=0.0,
+        T=1.0,
+        N=12,
+        T1=0.5,
+        T2=1.0,
+    )
+
+    t = monitoring_times(params)
+
+    deterministic_avg = np.mean(
+        params.S0 * np.exp(params.r * t)
+    )
+
+    expected_price = (
+        np.exp(-params.r * params.T)
+        * max(
+            deterministic_avg - params.K,
+            0.0,
+        )
+    )
+
+    result = standard_mc_price(
+        params,
+        n_paths=1000,
+        seed=123,
+    )
+
+    assert abs(
+        result["price"]
+        - expected_price
+    ) < 1e-12
+
+
+def test_rqmc_requires_multiple_replications(
+    params,
+):
+
     with pytest.raises(ValueError):
-        rqmc_sobol_price(params, 1024, n_replications=1)
+
+        rqmc_sobol_price(
+            params,
+            1024,
+            n_replications=1,
+        )
 
 
 def test_sobol_bridge_beats_incremental_on_asian():
-    """Brownian-bridge construction should reduce RMSE versus incremental
-    Sobol for a path-dependent payoff."""
-    params = AsianOptionParams(S0=100, K=100, r=0.05, sigma=0.30, T=1.0, N=50)
-    # Repeat with different scramble seeds and compare spread of the estimator
-    # (which is what QMC variance actually measures).
-    seeds = [1, 2, 3, 4, 5, 6, 7, 8]
+    """
+    Brownian bridge should improve Sobol performance.
+    """
+
+    params = AsianOptionParams(
+        S0=100,
+        K=100,
+        r=0.05,
+        sigma=0.30,
+        T=1.0,
+        N=50,
+    )
+
+    seeds = [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+    ]
+
     n = 8192
+
     inc_prices = [
-        sobol_qmc_price(params, n, seed=s, path_method="incremental")["price"]
+        sobol_qmc_price(
+            params,
+            n,
+            seed=s,
+            path_method="incremental",
+        )["price"]
         for s in seeds
     ]
+
     bri_prices = [
-        sobol_qmc_price(params, n, seed=s, path_method="brownian_bridge")["price"]
+        sobol_qmc_price(
+            params,
+            n,
+            seed=s,
+            path_method="brownian_bridge",
+        )["price"]
         for s in seeds
     ]
-    assert np.std(bri_prices, ddof=1) < np.std(inc_prices, ddof=1)
+
+    assert np.std(
+        bri_prices,
+        ddof=1,
+    ) < np.std(
+        inc_prices,
+        ddof=1,
+    )
 
 
-def test_antithetic_rejects_tiny_budget(params):
+def test_sobol_bridge_beats_incremental_delayed():
+    """
+    Brownian bridge should still help
+    under delayed averaging windows.
+    """
+
+    params = AsianOptionParams(
+        S0=100,
+        K=100,
+        r=0.05,
+        sigma=0.30,
+        T=1.0,
+        N=50,
+        T1=0.25,
+        T2=1.0,
+    )
+
+    seeds = [1, 2, 3, 4, 5]
+
+    n = 8192
+
+    inc_prices = [
+        sobol_qmc_price(
+            params,
+            n,
+            seed=s,
+            path_method="incremental",
+        )["price"]
+        for s in seeds
+    ]
+
+    bri_prices = [
+        sobol_qmc_price(
+            params,
+            n,
+            seed=s,
+            path_method="brownian_bridge",
+        )["price"]
+        for s in seeds
+    ]
+
+    assert np.std(
+        bri_prices,
+        ddof=1,
+    ) < np.std(
+        inc_prices,
+        ddof=1,
+    )
+
+
+def test_antithetic_rejects_tiny_budget(
+    params,
+):
+
     with pytest.raises(ValueError):
-        antithetic_mc_price(params, n_paths=1)
+
+        antithetic_mc_price(
+            params,
+            n_paths=1,
+        )
 
 
-@pytest.mark.parametrize("func", [standard_mc_price, control_variate_price])
-def test_estimators_reject_invalid_n_paths(params, func):
+@pytest.mark.parametrize(
+    "func",
+    [
+        standard_mc_price,
+        control_variate_price,
+    ],
+)
+def test_estimators_reject_invalid_n_paths(
+    params,
+    func,
+):
+
     with pytest.raises(ValueError):
-        func(params, n_paths=0)
+
+        func(
+            params,
+            n_paths=0,
+        )
