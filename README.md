@@ -1,6 +1,6 @@
 # asian-option-pricer
 
-**Fast, accurate pricing of arithmetic Asian options under GBM — with variance reduction and generalized averaging windows.**
+**Fast, accurate pricing of arithmetic Asian options under GBM — with variance reduction, generalized averaging windows, option Greeks, and adaptive estimator selection.**
 
 [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/ZixuLiAdrian/MATH5030-Numerical-Methods-in-Finance/blob/main/notebooks/demo.ipynb)
 
@@ -10,9 +10,9 @@
 
 Pricing an arithmetic Asian option requires simulation because the average of lognormal prices has no closed-form distribution.
 
-This package implements analytic benchmarks together with Monte Carlo and Quasi-Monte Carlo estimators for discretely monitored Asian options under GBM. In addition to standard equally spaced averaging from time 0 to maturity T, the framework now supports generalized averaging windows [T1, T2], allowing averaging to begin after inception — a common feature in commodity-linked contracts and structured products.
+This package implements analytic benchmarks together with Monte Carlo and Quasi-Monte Carlo estimators for discretely monitored Asian options under GBM. In addition to standard equally spaced averaging from time 0 to maturity T, the framework supports generalized averaging windows [T1, T2], allowing averaging to begin after inception — a common feature in commodity-linked contracts and structured products.
 
-This package implements two analytic benchmarks and six Monte Carlo / Quasi-Monte Carlo estimators, and shows that combining a **geometric-Asian control variate** with **Brownian-bridge Sobol QMC** reduces pricing error by up to **82×** versus plain Monte Carlo at the same computational cost.
+This package implements two analytic benchmarks, six MC/QMC estimators, an adaptive pilot-based selector, and three Greek estimators. Combining a **geometric-Asian control variate** with **Brownian-bridge Sobol QMC** reduces pricing error by up to **82×** versus plain Monte Carlo at the same computational cost.
 
 ---
 
@@ -25,6 +25,8 @@ While the core methods are classical, several aspects of this project go beyond 
 - **Combined antithetic + CV estimator** — `antithetic_cv_price` stacks antithetic sampling and the geometric control variate together, which standard references treat separately.
 - **RMSE vs. CPU time efficiency study** — we measure root-mean-square error across 12 independent replications at five path budgets and plot against both paths and wall-clock time, giving a fairer comparison than RMSE vs. paths alone.
 - **Generalized averaging windows** — the pricing framework supports arbitrary averaging intervals `[T1, T2]` instead of only `[0, T]`. All Monte Carlo, QMC, Brownian-bridge, and analytic benchmark implementations were generalized consistently and validated against covariance identities and Monte Carlo cross-checks.
+- **Option Greeks via pathwise, likelihood-ratio, and finite-difference** — `pathwise_greeks` computes delta, vega, and rho via Infinitesimal Perturbation Analysis (IPA); `lr_greeks` computes delta and vega via the score-function method and quantifies its variance overhead relative to pathwise; `fd_greeks` adds gamma via central finite differences with common random numbers. The three-way comparison is methodologically instructive: pathwise is most efficient for the smooth Asian payoff, LR generalises to discontinuous payoffs at a variance cost, and FD is the only route to gamma without a second-order score estimator.
+- **Pilot-based adaptive estimator selection** — `smart_price` reserves about 5% of the *total* path budget for a pilot phase, splits that pilot budget across the candidate estimators, selects the winner by efficiency ($1/\text{SE}^2/\text{runtime}$), then prices with the remaining budget. The returned `n_paths` now reflects the actual combined pilot + main path usage, so efficiency comparisons remain fair. The RQMC candidate uses multiple scrambles in the pilot to report a cross-replication SE (not the unreliable single-scramble proxy), making the comparison fair. The selector routes to different estimators across parameter regimes — for example switching away from the geometric control variate in deep-OTM cases where all payoffs are zero — turning the pricer into an adaptive algorithm rather than a fixed-method demonstration.
 
 ---
 
@@ -136,6 +138,24 @@ All estimators return a `dict` with at minimum `{price, std_err, runtime_s, n_pa
 
 The bridge construction concentrates path variance on the best-equidistributed Sobol coordinates and is recommended for QMC estimators. The implementation supports arbitrary monitoring schedules induced by delayed averaging windows `[T1, T2]`.
 
+### Adaptive estimator
+
+| Function | Extra keys | Description |
+| --- | --- | --- |
+| `smart_price(params, n_paths, pilot_fraction, n_pilot_replications, n_main_replications, seed)` | `selected_method`, `pilot_scores`, `pilot_n_paths`, `main_n_paths` | Pilot-benchmarks candidate estimators, selects the most efficient, prices with the remaining budget while honoring the total path budget. |
+
+`pilot_fraction` (default 0.05) controls the total pilot budget. When the overall budget is large enough, the pilot reserves at least 512 total paths and leaves at least 64 for the main run. `pilot_scores` is a nested dict mapping each candidate to `{std_err, runtime_s, efficiency, n_paths}`; `pilot_n_paths` and `main_n_paths` report the realised pilot and main allocations, and their sum equals the returned `n_paths`.
+
+### Option Greeks
+
+All Greek functions accept calls only and return a `dict`.
+
+| Function | Greeks returned | Method |
+| --- | --- | --- |
+| `pathwise_greeks(params, n_paths, seed, path_method)` | `delta`, `vega`, `rho` + per-Greek `std_err_*` | IPA — differentiates the payoff path-by-path. Lowest variance for smooth payoffs. |
+| `lr_greeks(params, n_paths, seed)` | `delta`, `vega` + per-Greek `std_err_*` | Score-function — differentiates the simulation density. Valid for discontinuous payoffs; higher variance than pathwise for the Asian call. Requires `sigma > 0`. |
+| `fd_greeks(params, n_paths, seed, bump_pct)` | `delta`, `gamma`, `vega`, `rho` | Central finite-difference with common random numbers. Only method providing gamma. |
+
 ---
 
 ## Mathematical setup
@@ -220,18 +240,30 @@ All tests passed within Monte Carlo error tolerance.
 ```text
 MATH5030-Numerical-Methods-in-Finance/
 ├─ src/asian_option_pricer/
-│  ├─ analytic.py
-│  ├─ control_variate.py
-│  ├─ monte_carlo.py
-│  ├─ paths.py
-│  ├─ qmc.py
-│  ├─ models.py
-│  ├─ utils.py
-│  └─ benchmarks.py
+│  ├─ analytic.py          # Kemna-Vorst + Levy closed forms
+│  ├─ control_variate.py   # CV and antithetic+CV estimators
+│  ├─ monte_carlo.py       # plain MC and antithetic MC
+│  ├─ paths.py             # incremental + Brownian-bridge path construction
+│  ├─ qmc.py               # Sobol QMC + RQMC
+│  ├─ adaptive.py          # smart_price adaptive selector  ← new
+│  ├─ greeks.py            # pathwise / LR / FD Greeks       ← new
+│  ├─ models.py            # AsianOptionParams dataclass
+│  ├─ utils.py             # monitoring_times, discount_factor
+│  └─ benchmarks.py        # benchmark_suite convenience function
 ├─ experiments/
+│  ├─ run_validation.py
+│  ├─ run_efficiency.py
+│  ├─ run_robustness.py
+│  ├─ run_greeks.py        # Greeks comparison experiment     ← new
+│  ├─ run_adaptive.py      # adaptive selection experiment    ← new
+│  └─ _common.py
 ├─ tests/
 ├─ notebooks/demo.ipynb
 ├─ results/
+│  ├─ tables/
+│  │  ├─ greeks_comparison.csv   ← new
+│  │  └─ adaptive_selection.csv  ← new
+│  └─ figures/
 ├─ pyproject.toml
 ├─ LICENSE
 └─ README.md
@@ -246,4 +278,5 @@ MATH5030-Numerical-Methods-in-Finance/
 3. Turnbull, S. M., & Wakeman, L. M. (1991). *A quick algorithm for pricing European average options.*
 4. Caflisch, R. E., Morokoff, W. J., & Owen, A. B. (1997). *Valuation of mortgage-backed securities using Brownian bridges to reduce effective dimension.*
 5. Owen, A. B. (1997). *Scrambled net variance for integrals of smooth functions.*
-6. Glasserman, P. (2004). *Monte Carlo Methods in Financial Engineering.*
+6. Glasserman, P. (2004). *Monte Carlo Methods in Financial Engineering.* (Ch. 7 for pathwise and likelihood-ratio Greeks.)
+7. Broadie, M., & Glasserman, P. (1996). *Estimating security price derivatives using simulation.* Management Science, 42(2), 269–285.
