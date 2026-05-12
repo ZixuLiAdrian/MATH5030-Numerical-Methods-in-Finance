@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "asian-option-pricer"
-version = "0.1.0"
+version = "0.1.2"
 description = "Efficient numerical pricing methods for arithmetic Asian options under GBM"
 readme = "README.md"
 license = { file = "LICENSE" }
