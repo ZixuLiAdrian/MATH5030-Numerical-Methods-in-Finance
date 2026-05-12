@@ -1,5 +1,9 @@
 """Efficient numerical pricing methods for arithmetic Asian options."""
 
+from .adaptive import (
+    smart_price,
+)
+
 from .analytic import (
     geometric_asian_call_price,
     levy_approx_call_price,
@@ -8,6 +12,12 @@ from .analytic import (
 from .control_variate import (
     antithetic_cv_price,
     control_variate_price,
+)
+
+from .greeks import (
+    fd_greeks,
+    lr_greeks,
+    pathwise_greeks,
 )
 
 from .models import (
@@ -51,6 +61,14 @@ __all__ = [
     # qmc
     "sobol_qmc_price",
     "rqmc_sobol_price",
+
+    # adaptive selector
+    "smart_price",
+
+    # greeks
+    "pathwise_greeks",
+    "lr_greeks",
+    "fd_greeks",
 
     # paths
     "brownian_bridge_matrix",

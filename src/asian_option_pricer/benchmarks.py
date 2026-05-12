@@ -6,8 +6,10 @@ pretty-printing or tabular export.
 """
 from __future__ import annotations
 
+from .adaptive import smart_price
 from .analytic import geometric_asian_call_price, levy_approx_call_price
 from .control_variate import antithetic_cv_price, control_variate_price
+from .greeks import fd_greeks, lr_greeks, pathwise_greeks
 from .models import AsianOptionParams
 from .monte_carlo import antithetic_mc_price, standard_mc_price
 from .qmc import rqmc_sobol_price, sobol_qmc_price
@@ -47,4 +49,8 @@ def benchmark_suite(
         "rqmc_bridge": rqmc_sobol_price(
             params, n_paths, seed=seed, n_replications=16, path_method="brownian_bridge"
         ),
+        "smart_price": smart_price(params, n_paths, seed=seed),
+        "pathwise_greeks": pathwise_greeks(params, n_paths, seed=seed),
+        "lr_greeks": lr_greeks(params, n_paths, seed=seed),
+        "fd_greeks": fd_greeks(params, n_paths // 5, seed=seed),
     }
