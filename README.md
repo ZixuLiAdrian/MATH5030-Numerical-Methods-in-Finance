@@ -158,6 +158,48 @@ All Greek functions accept calls only and return a `dict`.
 
 ---
 
+## Results at a glance
+
+Reference: `S0 = 100`, `K = 100`, `r = 5%`, `sigma = 30%`, `T = 1 year`, `N = 50`.
+
+### Pricing — RMSE vs. plain Monte Carlo
+
+RMSE measured across 12 independent replications at 524k paths; see `experiments/run_efficiency.py`.
+
+| Method | RMSE @ 524k paths | Gain over plain MC |
+| --- | ---: | ---: |
+| Standard Monte Carlo | 1.9 × 10⁻² | 1× |
+| Antithetic variates | 8.2 × 10⁻³ | ≈ 2.6× |
+| Sobol QMC — incremental | 1.8 × 10⁻³ | ≈ 10× |
+| Control variate (geometric Asian) | 7.3 × 10⁻⁴ | ≈ 26× |
+| Antithetic + control variate | 7.8 × 10⁻⁴ | ≈ 24× |
+| Randomised QMC — Brownian bridge | 3.5 × 10⁻⁴ | ≈ 54× |
+| **Sobol QMC — Brownian bridge** | **2.3 × 10⁻⁴** | **≈ 82×** |
+| `smart_price` (pilot-adaptive) | ≈ 7.9 × 10⁻⁴ | ≈ 24× *(selects antithetic+CV or control variate at ATM — both near-optimal)* |
+
+The adaptive selector trails the single best fixed method because ≈5% of the budget is spent on the pilot. In exchange it is parameter-agnostic: it routes to the cheapest estimator automatically across moneyness and volatility regimes.
+
+![Efficiency: RMSE vs paths and vs CPU time](results/figures/efficiency_rmse_vs_time.png)
+
+### Option Greeks — pathwise vs. likelihood-ratio vs. finite-difference
+
+`N_PATHS = 500 000` for pathwise and LR; `N_PATHS = 100 000` for finite-difference (5 re-pricings per Greek, common random numbers). Same canonical params as above.
+
+| Greek | Pathwise (SE) | LR (SE) | Finite-diff | LR/PW variance ratio |
+| --- | ---: | ---: | ---: | ---: |
+| Delta (∂C/∂S₀) | 0.5727 (0.00079) | 0.5739 (0.00509) | 0.5718 | **41×** |
+| Vega (∂C/∂σ) | 22.265 (0.062) | 22.271 (0.721) | 22.233 | **136×** |
+| Rho (∂C/∂r) | 22.170 (0.031) | — | 22.148 | — |
+| Gamma (∂²C/∂S₀²) | — | — | 0.02128 | — |
+
+Key observations:
+- All three methods agree within 1–2 SE (same expectation, different variance).
+- The LR/PW variance ratio (41× for delta, 136× for vega) shows the efficiency cost of the general-purpose score-function approach for a payoff that is already smooth — pathwise IPA exploits that smoothness directly.
+- Gamma is uniquely available from finite-difference; pathwise and LR would require second-order estimators.
+- The large LR vega SE arises from the chi-squared score $\sum_i(z_i^2-1)/\sigma$, which has variance $2N/\sigma^2$ independently of the payoff; the drift-correction term $-z_i\sqrt{\Delta t_i}$ is required for unbiasedness (it accounts for the $\sigma$-dependence of the GBM drift) and adds negligible extra variance compared to the chi-squared term.
+
+---
+
 ## Mathematical setup
 
 Under the risk-neutral measure the underlying follows geometric Brownian motion
